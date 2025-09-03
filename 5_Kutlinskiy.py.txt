@@ -1,0 +1,64 @@
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry
+
+stations_layers = [l for l in QgsProject.instance().mapLayers().values() if l.name() == 'stations']
+if not stations_layers:
+    print("Слой 'stations' не найден")
+    exit()
+stations_layer = stations_layers[0]
+
+districts_layer = QgsVectorLayer('Загрузки/districts (2).geojson', 'districts', 'ogr')
+if not districts_layer.isValid():
+    print("Слой районов не загрузился")
+else:
+    QgsProject.instance().addMapLayer(districts_layer)
+
+buffer_layer = QgsVectorLayer('Polygon?crs=EPSG:3857', 'station_buffers', 'memory')
+buffer_provider = buffer_layer.dataProvider()
+
+buffer_fields = stations_layer.fields()
+buffer_provider.addAttributes(buffer_fields)
+buffer_layer.updateFields()
+
+features_to_add = []
+
+for station in stations_layer.getFeatures():
+    attrs = station.attributes()
+    branch = attrs[stations_layer.fields().indexFromName('branch')]
+    depth = attrs[stations_layer.fields().indexFromName('depth')]
+    
+    if branch and branch.lower() == 'green':
+        try:
+            depth_val = float(depth)
+            buffer_geom = station.geometry().buffer(500, 8)
+            feat = QgsFeature()
+            feat.setGeometry(buffer_geom)
+            feat.setAttributes(station.attributes())
+            features_to_add.append(feat)
+        except (ValueError, TypeError):
+            continue
+
+if features_to_add:
+    buffer_provider.addFeatures(features_to_add)
+    buffer_layer.updateExtents()
+    QgsProject.instance().addMapLayer(buffer_layer)
+
+spatial_index = QgsSpatialIndex(buffer_layer.getFeatures())
+
+for district in districts_layer.getFeatures():
+    district_geom = district.geometry()
+    
+    for buffer_feat in buffer_layer.getFeatures():
+        buffer_geom = buffer_feat.geometry()
+        
+        if district_geom.intersects(buffer_geom):
+            branch = buffer_feat.attribute('branch')
+            depth = buffer_feat.attribute('depth')
+            
+            if branch and branch.lower() == 'green':
+                try:
+                    depth_val = float(depth)
+                    if depth_val > 50:
+                        districts_layer.select(district.id())
+                        break
+                except (ValueError, TypeError):
+                    continue
