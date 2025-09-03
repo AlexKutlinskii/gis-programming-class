@@ -1,0 +1,8 @@
+[general]
+name=Kutlinskiy
+description=Reproject and simplify selected vector layer (plugin by Alexsander Kutlinskiy)
+version=1.0
+qgisMinimumVersion=3.0
+author=Alexsander Kutlinskiy
+email=alexkutlinskiy4212454@gmail.com
+about=Plugin to reproject (to EPSG:4326 optional) and simplify geometries of a selected vector layer; result added as temporary layer.
