@@ -1,0 +1,63 @@
+
+from osgeo import gdal
+from qgis.core import QgsVectorLayer
+import os
+
+input_raster = r"C:\Users\alexk\Downloads\1.tif"
+output_raster = r"C:\Users\alexk\Desktop\4_KUtlinskiy.tif"
+footprint_path = r"C:\Users\alexk\Desktop\footprint_1.geojson"
+
+src_ds = gdal.Open(input_raster)
+if src_ds is None:
+    raise Exception(f"Не удалось открыть файл: {input_raster}")
+    
+xsize = src_ds.RasterXSize
+ysize = src_ds.RasterYSize
+bands_count = src_ds.RasterCount
+arrays = []
+
+for i in range(1, bands_count + 1):
+    band = src_ds.GetRasterBand(i)
+    array = band.ReadAsArray().astype(float)
+    arrays.append(array)
+
+
+driver = gdal.GetDriverByName("GTiff")
+dst_ds = driver.Create(output_raster, xsize, ysize, bands_count, gdal.GDT_Float32)
+
+
+for idx, array in enumerate(arrays):
+    band = dst_ds.GetRasterBand(idx + 1)
+    band.WriteArray(array)
+
+
+dst_ds.SetGeoTransform(src_ds.GetGeoTransform())
+dst_ds.SetProjection(src_ds.GetProjection())
+
+
+footprint_layer = QgsVectorLayer(footprint_path, "footprint", "ogr")
+if not footprint_layer.isValid():
+    raise Exception(f"Не удалось загрузить векторный слой: {footprint_path}")
+
+feature = next(footprint_layer.getFeatures())
+geom = feature.geometry()
+polygon = geom.asPolygon()[0]  # Список из 4 точек
+
+coords = [(point.x(), point.y()) for point in polygon]
+
+
+gcps = [
+    gdal.GCP(coords[0][0], coords[0][1], 0, 0, 0),                     # NW
+    gdal.GCP(coords[1][0], coords[1][1], 0, xsize - 1, 0),             # NE
+    gdal.GCP(coords[2][0], coords[2][1], 0, xsize - 1, ysize - 1),     # SE
+    gdal.GCP(coords[3][0], coords[3][1], 0, 0, ysize - 1)              # SW
+]
+
+
+dst_ds.SetGCPs(gcps, dst_ds.GetProjection())
+dst_ds.FlushCache()
+
+src_ds = None
+dst_ds = None
+
+print("Готово: изображение с привязкой сохранено.")
